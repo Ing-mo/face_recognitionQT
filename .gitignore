@@ -1,0 +1,40 @@
+# C++
+*.o
+*.lo
+*.la
+*.slo
+*.so
+*.a
+*.dll
+*.exe
+*.suo
+*.ncb
+*.sdf
+*.pdb
+*.idb
+*.bak
+*.tmp
+
+# Qt
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+Makefile*
+*.qm
+*.prl
+*.pri.orig
+
+# Build directories
+debug/
+release/
+build-*/
+
+# Qt Creator
+*.creator.user
+
+# macOS
+.DS_Store
