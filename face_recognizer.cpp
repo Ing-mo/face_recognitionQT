@@ -355,4 +355,17 @@ int face_recognizer_get_results(RecognitionResult **out_results) {
     return 0;
 }
 
+// 在 extern "C" 块的末尾添加
+int face_recognizer_clear_database() {
+    // 这里我们假设对 face_database_clustered 的访问需要加锁
+    // 但在这个简单场景下，我们将直接清空并保存。
+    // 在更复杂的应用中，可能需要一个全局锁。
+
+    face_database_clustered.clear();
+    save_database_clustered(); // 这个函数会用空数据覆盖文件
+
+    printf("Face database has been cleared.\n");
+    return 0;
+}
+
 } // extern "C"
