@@ -5,26 +5,23 @@
 #include <QPixmap>
 #include <QList>
 #include <QByteArray>
-#include <opencv2/video/tracking.hpp> // For KalmanFilter
+#include <QStringList>
+#include <atomic>
+#include <opencv2/video/tracking.hpp>
+#include <QTimer> // <-- [新增] 引入QTimer头文件
 
-// 包含你的 C API 头文件
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+
 extern "C" {
 #include "video_manager.h"
 #include "face_detector.h"
 #include "face_recognizer.h"
 }
 
-// 提前声明 RecognitionResult 结构体，以便在 QList 中使用
-// 这样可以避免在头文件中包含完整的定义，减少编译依赖
-// 不过，由于我们要在信号中使用它，完整的定义是必需的。
-// face_recognizer.h 中已经有了定义。
-
-// 为了能在信号槽系统中传递 QList<RecognitionResult>，需要注册这个元类型。
-// 在 .h 文件中声明，在 .cpp 或 main.cpp 中注册(qRegisterMetaType)。
 Q_DECLARE_METATYPE(QList<RecognitionResult>)
 
-
-// 用于追踪人脸的内部结构体
 struct FaceTracker {
     int active = 0;
     FaceRect rect = {0,0,0,0};
@@ -35,60 +32,49 @@ struct FaceTracker {
     cv::KalmanFilter kf;
 };
 
-
 class VideoProcessor : public QObject
 {
-    Q_OBJECT // 必须包含此宏，以支持信号和槽
+    Q_OBJECT
 
 public:
     explicit VideoProcessor(QObject *parent = nullptr);
     ~VideoProcessor();
 
 public slots:
-    /**
-     * @brief 主要的处理循环。
-     * 这个槽函数应该在工作线程启动后被调用。
-     */
-    void process();
-
-    /**
-     * @brief 请求停止处理循环。
-     * 这是一个线程安全的槽，可以从任何线程调用。
-     */
+    void startProcessing();    // <-- [修改] 用于启动整个流程和定时器
+    void processSingleFrame(); // <-- [新增] 由定时器触发，处理单帧图像
     void stop();
-
-    /**
-     * @brief 设置摄像头的亮度。
-     * 这是一个线程安全的槽，可以从主线程调用。
-     * @param value 亮度值 (通常为 0-255)。
-     */
     void setBrightness(int value);
+    void takePhoto();
+    void startRegistration(const QString &name);
+    void clearDatabase();
+
 
 signals:
-    /**
-     * @brief 当一帧视频处理完毕后发射此信号。
-     * @param jpegData 包含原始摄像头JPEG数据的字节数组。
-     * @param results 一个列表，包含了所有被识别或追踪到的人脸的结果（位置、名字等）。
-     */
     void frameProcessed(const QByteArray &jpegData, const QList<RecognitionResult> &results);
-
-    /**
-     * @brief 发射一条状态信息，用于在UI上显示。
-     * @param message 要显示的状态文本。
-     */
     void statusMessage(const QString &message);
+    void finished(); // <-- [新增] 可以用来通知主线程处理已结束
 
 private:
+    QTimer *m_timer = nullptr; // <-- [新增] 定时器指针
     VideoCaptureDevice *m_cam = nullptr;
     volatile bool m_stopped = false;
-
-    // 从你旧的 main.cpp 中移植过来的变量
     std::vector<FaceTracker> m_trackers;
     int m_nextTrackerId = 0;
+    int m_frameCounter = 0; // <-- [新增] 用于替代局部变量的帧计数器
 
-    // 私有辅助函数
+    QByteArray m_lastFrameJpeg;
+    std::atomic<bool> m_registrationMode{false};
+    QString m_registrationName;
+    int m_photosToTake;
+    QStringList m_takenPhotoPaths;
+    int m_regCaptureInterval;
+
     void initKalmanFilter(cv::KalmanFilter& kf, const FaceRect& initial_rect);
     float calculate_iou(const FaceRect& r1, const FaceRect& r2);
+
+    void handleRegistration(VideoFrame *frame, const std::vector<FaceRect> &detected_faces);
+    void cleanupRegistration(bool success);
 };
 
 #endif // VIDEOPROCESSOR_H

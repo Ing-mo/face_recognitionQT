@@ -44,7 +44,7 @@ int face_detector_detect(const unsigned char *jpeg_buf, unsigned long jpeg_size,
 
     // 3. 检测人脸
     std::vector<cv::Rect> faces;
-    face_cascade.detectMultiScale(gray_frame, faces, 1.05, 5, 0, cv::Size(100, 100));
+    face_cascade.detectMultiScale(gray_frame, faces, 1.1, 5, 0, cv::Size(100,100));
 
     int num_faces = faces.size();
     if (num_faces > 0) {

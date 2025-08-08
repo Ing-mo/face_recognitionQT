@@ -106,8 +106,8 @@ fail:
 }
 
 VideoFrame* video_capture_get_frame(VideoCaptureDevice *dev) {
-    printf("DEBUG: Waiting for frame (poll)...\n"); // <--- 新增
-    fflush(stdout); // <--- 新增，确保信息立刻打印出来
+    //printf("DEBUG: Waiting for frame (poll)...\n"); // <--- 新增
+    //fflush(stdout); // <--- 新增，确保信息立刻打印出来
     struct pollfd fds[1];
     fds[0].fd = dev->fd;
     fds[0].events = POLLIN;
@@ -116,13 +116,13 @@ VideoFrame* video_capture_get_frame(VideoCaptureDevice *dev) {
     if (ret <= 0) {
         perror("poll");
         if (ret == 0) {
-            printf("DEBUG: poll timed out after 5 seconds.\n"); // <--- 新增
+            //printf("DEBUG: poll timed out after 5 seconds.\n"); // <--- 新增
         }
         return NULL;
     }
 
-    printf("DEBUG: poll returned, frame is ready. Dequeuing buffer...\n"); // <--- 新增
-    fflush(stdout);
+    //printf("DEBUG: poll returned, frame is ready. Dequeuing buffer...\n"); // <--- 新增
+    //fflush(stdout);
 
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));

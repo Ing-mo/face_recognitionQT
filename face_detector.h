@@ -27,7 +27,6 @@ int face_detector_init(const char *cascade_path);
  * @param jpeg_buf 指向JPEG数据的指针
  * @param jpeg_size JPEG数据的大小
  * @param detected_faces 指向FaceRect数组的指针，函数会为其分配内存。调用者需要负责free()这个数组。
- * @param max_faces `detected_faces` 数组的最大容量。
  * @return 检测到的人脸数量，如果出错则为-1。
  */
 int face_detector_detect(const unsigned char *jpeg_buf, unsigned long jpeg_size, FaceRect **detected_faces);
