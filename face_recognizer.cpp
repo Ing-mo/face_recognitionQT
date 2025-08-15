@@ -18,28 +18,28 @@ struct RecognitionTask {
     cv::Mat image;
     std::vector<FaceRect> faces;
 };
-using RecognitionResultVec = std::vector<RecognitionResult>;
+using RecognitionResultVec = std::vector<RecognitionResult>;  
 
-static std::queue<RecognitionTask> task_queue;
+static std::queue<RecognitionTask> task_queue;  
 static std::mutex task_queue_mutex;
-static std::condition_variable task_queue_cv;
+static std::condition_variable task_queue_cv;    
 
-static std::queue<RecognitionResultVec> result_queue;
-static std::mutex result_queue_mutex;
-static std::condition_variable result_queue_cv;
+static std::queue<RecognitionResultVec> result_queue;   
+static std::mutex result_queue_mutex;                   
+static std::condition_variable result_queue_cv;        
 
-static cv::dnn::Net net;
-// 新的数据库结构：一个名字对应一组特征向量（簇心）
+static cv::dnn::Net net;   
 static std::vector<std::pair<std::string, std::vector<cv::Mat>>> face_database_clustered;
-static std::thread worker_thread;
-static std::atomic<bool> exit_flag(false);
-static std::string g_database_path;
+static std::thread worker_thread;           
+static std::atomic<bool> exit_flag(false);   
+static std::string g_database_path;          
 
-const cv::Size INPUT_SIZE(112, 112);
-const float THRESHOLD = 0.363f;
-const int NUM_CLUSTERS = 3; // 为每个人设置3个特征簇心
+const cv::Size INPUT_SIZE(112, 112);    
+const float THRESHOLD = 0.363f;          
+const int NUM_CLUSTERS = 3;              
 
-// --- 内部辅助函数 (声明为 static) ---
+// --- 内部辅助函数 ---
+// 计算两个特征向量的余弦相似度
 static double cosine_similarity(const cv::Mat& a, const cv::Mat& b) {
     cv::Mat a_norm, b_norm;
     cv::normalize(a, a_norm);
@@ -47,11 +47,13 @@ static double cosine_similarity(const cv::Mat& a, const cv::Mat& b) {
     return a_norm.dot(b_norm);
 }
 
+// 对人脸切片进行预处理，增强图像质量
 static cv::Mat preprocess_face_chip(const cv::Mat& face_chip) {
     if (face_chip.empty()) {
         return face_chip;
     }
     cv::Mat processed_chip;
+    //  Gamma 校正
     float gamma = 0.8;
     cv::Mat lut(1, 256, CV_8U);
     uchar* p = lut.ptr();
@@ -59,39 +61,45 @@ static cv::Mat preprocess_face_chip(const cv::Mat& face_chip) {
         p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, gamma) * 255.0);
     }
     cv::LUT(face_chip, lut, processed_chip);
+    // 转换为灰度图
     cv::Mat gray_chip;
     cv::cvtColor(processed_chip, gray_chip, cv::COLOR_BGR2GRAY);
-    cv::equalizeHist(gray_chip, gray_chip);
-    cv::cvtColor(gray_chip, processed_chip, cv::COLOR_GRAY2BGR);
+    cv::equalizeHist(gray_chip, gray_chip);                            
+    cv::cvtColor(gray_chip, processed_chip, cv::COLOR_GRAY2BGR);       
     return processed_chip;
 }
 
+// 从一个Mat格式的人脸切片中提取128维特征向量
 static int get_feature(const cv::Mat& face_chip, cv::Mat& feature) {
     cv::Mat processed_chip = preprocess_face_chip(face_chip);
-    cv::Mat blob;
+    cv::Mat blob;    
     cv::dnn::blobFromImage(processed_chip, blob, 1.0/255.0, INPUT_SIZE, cv::Scalar(), true, false);
+
     net.setInput(blob);
-    feature = net.forward();
-    cv::normalize(feature, feature, 1.0, 0.0, cv::NORM_L2);
+    feature = net.forward();        
+    cv::normalize(feature, feature, 1.0, 0.0, cv::NORM_L2);    
     return 0;
 }
 
+// 从一个图像文件路径中提取主导人脸的特征
 static int get_feature_from_path(const char* image_path, cv::Mat& feature) {
     cv::Mat img = cv::imread(image_path);
     if (img.empty()) {
         fprintf(stderr, "Failed to read image %s\n", image_path);
         return -1;
     }
+
     std::vector<uchar> jpeg_buf;
     cv::imencode(".jpg", img, jpeg_buf);
+
     FaceRect* faces = nullptr;
-    // face_detector_detect 是一个 extern "C" 函数，可以直接调用
     int num_faces = face_detector_detect(jpeg_buf.data(), jpeg_buf.size(), &faces);
     if (num_faces <= 0) {
         if (faces) free(faces);
         fprintf(stderr, "No faces found in %s\n", image_path);
         return -1;
     }
+    // 找到面积最大的人脸作为目标
     FaceRect target_face = faces[0];
     int max_area = 0;
     for(int i = 0; i < num_faces; i++) {
@@ -101,6 +109,7 @@ static int get_feature_from_path(const char* image_path, cv::Mat& feature) {
     free(faces);
     cv::Rect roi(target_face.x, target_face.y, target_face.width, target_face.height);
     cv::Mat face_chip = img(roi);
+
     return get_feature(face_chip, feature);
 }
 
@@ -132,6 +141,7 @@ static void load_database_clustered() {
             }
             features.push_back(feature.clone());
         }
+
         face_database_clustered.emplace_back(name, features);
     }
     db_file.close();
@@ -177,27 +187,31 @@ void recognition_worker_func() {
         RecognitionTask task;
         {
             std::unique_lock<std::mutex> lock(task_queue_mutex);
+
             task_queue_cv.wait(lock, []{ return !task_queue.empty() || exit_flag; });
             if (exit_flag) break;
+            
             task = task_queue.front();
             task_queue.pop();
         }
 
+        //  执行耗时的识别任务 
         RecognitionResultVec results;
         for (const auto& face_rect : task.faces) {
             cv::Rect roi(face_rect.x, face_rect.y, face_rect.width, face_rect.height);
-            roi = roi & cv::Rect(0, 0, task.image.cols, task.image.rows);
+            roi = roi & cv::Rect(0, 0, task.image.cols, task.image.rows); 
             if(roi.width <= 1 || roi.height <= 1) continue;
 
             cv::Mat face_chip = task.image(roi);
             cv::Mat feature;
-            if (get_feature(face_chip, feature) != 0) continue;
-
+            if (get_feature(face_chip, feature) != 0) continue; 
+            
+            // --- 与数据库中的所有模板进行比对 ---
             float best_score = 0.f;
             std::string best_name = "Unknown";
 
-            for (const auto& db_entry : face_database_clustered) {
-                for (const auto& cluster_center : db_entry.second) {
+            for (const auto& db_entry : face_database_clustered) {       
+                for (const auto& cluster_center : db_entry.second) {    
                     double score = cosine_similarity(feature, cluster_center);
                     if (score > best_score) {
                         best_score = score;
@@ -209,7 +223,7 @@ void recognition_worker_func() {
                     }
                 }
             }
-
+            //  将识别结果打包 
             RecognitionResult res;
             res.rect = face_rect;
             strncpy(res.name, best_name.c_str(), sizeof(res.name) - 1);
@@ -217,7 +231,7 @@ void recognition_worker_func() {
             res.score = best_score;
             results.push_back(res);
         }
-        {
+        {   
             std::lock_guard<std::mutex> lock(result_queue_mutex);
             result_queue.push(results);
         }
@@ -284,7 +298,7 @@ int face_recognizer_register_faces_from_paths(const char* const* image_paths, in
 
     if (all_features.size() < NUM_CLUSTERS) {
         fprintf(stderr, "Error: Not enough valid photos (%zu) to create %d clusters for '%s'.\n", all_features.size(), NUM_CLUSTERS, name);
-        return 0; // 返回0表示没有成功注册
+        return 0; 
     }
 
     cv::Mat features_matrix(all_features.size(), 128, CV_32F);
@@ -310,7 +324,7 @@ int face_recognizer_register_faces_from_paths(const char* const* image_paths, in
     printf("Registered %d feature clusters for '%s'.\n", NUM_CLUSTERS, name);
     return all_features.size();
 }
-
+// 异步接口 - 任务生产者
 int face_recognizer_submit_task(const unsigned char *jpeg_buf, unsigned long jpeg_size, const FaceRect *faces, int num_faces) {
     std::vector<FaceRect> faces_vec(faces, faces + num_faces);
 
@@ -329,7 +343,7 @@ int face_recognizer_submit_task(const unsigned char *jpeg_buf, unsigned long jpe
     task_queue_cv.notify_one();
     return 0;
 }
-
+// 异步接口 - 结果消费者
 int face_recognizer_get_results(RecognitionResult **out_results) {
     std::unique_lock<std::mutex> lock(result_queue_mutex, std::try_to_lock);
     if (lock.owns_lock() && !result_queue.empty()) {
@@ -352,6 +366,14 @@ int face_recognizer_get_results(RecognitionResult **out_results) {
     }
 
     *out_results = NULL;
+    return 0;
+}
+
+int face_recognizer_clear_database() {
+    face_database_clustered.clear();
+    save_database_clustered(); 
+
+    printf("Face database has been cleared.\n");
     return 0;
 }
 

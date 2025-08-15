@@ -21,12 +21,12 @@ typedef struct {
 /**
  * @brief 初始化视频捕获设备。
  *
- * 打开设备，设置格式，请求并映射缓冲区，然后启动视频流。
- * @param device_path 视频设备的路径 (例如 "/dev/video0")。
- * @param width 期望的捕获宽度。
- * @param height 期望的捕获高度。
- * @param format 期望的像素格式 (例如 V4L2_PIX_FMT_MJPEG)。
- * @return 成功则返回一个指向 VideoCaptureDevice 结构体的指针，失败返回 NULL。
+ * 打开设备，设置格式，请求并映射缓冲区，然后启动视频流
+ * @param device_path 视频设备的路径 (例如 "/dev/video0")
+ * @param width  期望的捕获宽度
+ * @param height 期望的捕获高度
+ * @param format 期望的像素格式 (例如 V4L2_PIX_FMT_MJPEG)
+ * @return 成功则返回一个指向 VideoCaptureDevice 结构体的指针，失败返回 NULL
  */
 VideoCaptureDevice* video_capture_init(const char *device_path, int width, int height, unsigned int format);
 

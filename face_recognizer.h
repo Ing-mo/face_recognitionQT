@@ -1,7 +1,7 @@
 #ifndef FACE_RECOGNIZER_H
 #define FACE_RECOGNIZER_H
 
-#include "face_detector.h" // 为了使用 FaceRect
+#include "face_detector.h" 
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,9 +38,6 @@ int face_recognizer_register_faces_from_paths(const char* const* image_paths, in
  */
 void face_recognizer_cleanup();
 
-
-// --- 新增的API函数，用于安全的跨模块通信 ---
-
 /**
  * @brief 异步提交一个识别任务。
  * 这个函数是非阻塞的，它会把任务放入一个队列中，由后台线程处理。
@@ -63,6 +60,18 @@ int face_recognizer_submit_task(const unsigned char *jpeg_buf, unsigned long jpe
  */
 int face_recognizer_get_results(RecognitionResult **results);
 
+/**
+ * @brief 清理人脸识别器使用的所有资源。
+ * 停止工作线程并释放内存。
+ */
+void face_recognizer_cleanup();
+
+/**
+ * @brief 清空所有已注册的人脸数据。
+ * 这会清空内存中的数据库，并用一个空数据库覆盖磁盘上的文件。
+ * @return 成功返回0，失败返回-1。
+ */
+int face_recognizer_clear_database();
 
 #ifdef __cplusplus
 }

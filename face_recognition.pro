@@ -10,6 +10,7 @@ CONFIG += c++11
 # .cpp 文件只应该在 SOURCES 中出现
 # .c 文件也应该在 SOURCES 中出现
 SOURCES += \
+    albumdialog.cpp \
     main.cpp \
     mainwindow.cpp \
     videoprocessor.cpp \
@@ -20,6 +21,7 @@ SOURCES += \
 # 定义头文件
 # .h 文件只应该在 HEADERS 中出现
 HEADERS += \
+    albumdialog.h \
     mainwindow.h \
     videoprocessor.h \
     video_manager.h \

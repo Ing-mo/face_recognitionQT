@@ -9,6 +9,7 @@
 #include <poll.h>
 
 VideoCaptureDevice* video_capture_init(const char *device_path, int width, int height, unsigned int format) {
+    //  分配并清零设备结构体内存
     VideoCaptureDevice *dev = calloc(1, sizeof(VideoCaptureDevice));
     if (!dev) {
         perror("calloc VideoCaptureDevice");
@@ -22,31 +23,36 @@ VideoCaptureDevice* video_capture_init(const char *device_path, int width, int h
         return NULL;
     }
 
+    // 查询设备能力集
     struct v4l2_capability cap;
     if (ioctl(dev->fd, VIDIOC_QUERYCAP, &cap) < 0) {
         perror("VIDIOC_QUERYCAP");
         goto fail;
     }
+
+    //支持视频捕获 (V4L2_CAP_VIDEO_CAPTURE) 和流式I/O (V4L2_CAP_STREAMING)
     if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE) || !(cap.capabilities & V4L2_CAP_STREAMING)) {
         fprintf(stderr, "Device does not support required capabilities\n");
         goto fail;
     }
 
+    // 设置视频格式
     struct v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width = width;
     fmt.fmt.pix.height = height;
-    fmt.fmt.pix.pixelformat = format;
-    fmt.fmt.pix.field = V4L2_FIELD_ANY;
+    fmt.fmt.pix.pixelformat = format;   
+    fmt.fmt.pix.field = V4L2_FIELD_ANY;  
     if (ioctl(dev->fd, VIDIOC_S_FMT, &fmt) < 0) {
         perror("VIDIOC_S_FMT");
         goto fail;
     }
 
+    // 申请DMA缓冲区（内存映射方式）
     struct v4l2_requestbuffers req;
     memset(&req, 0, sizeof(req));
-    req.count = 4; // 请求4个缓冲区足够了
+    req.count = 4; 
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
     if (ioctl(dev->fd, VIDIOC_REQBUFS, &req) < 0) {
@@ -54,13 +60,15 @@ VideoCaptureDevice* video_capture_init(const char *device_path, int width, int h
         goto fail;
     }
     dev->buffer_count = req.count;
+
+    // 为缓冲区指针数组和长度数组分配内存
     dev->buffers = calloc(dev->buffer_count, sizeof(void *));
     dev->buffer_lengths = calloc(dev->buffer_count, sizeof(unsigned int));
     if (!dev->buffers || !dev->buffer_lengths) {
         perror("calloc for buffers");
         goto fail;
     }
-
+    // 查询每个缓冲区的物理信息并进行内存映射
     for (int i = 0; i < dev->buffer_count; i++) {
         struct v4l2_buffer buf;
         memset(&buf, 0, sizeof(buf));
@@ -71,6 +79,7 @@ VideoCaptureDevice* video_capture_init(const char *device_path, int width, int h
             perror("VIDIOC_QUERYBUF");
             goto fail;
         }
+
         dev->buffer_lengths[i] = buf.length;
         dev->buffers[i] = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, dev->fd, buf.m.offset);
         if (dev->buffers[i] == MAP_FAILED) {
@@ -78,7 +87,8 @@ VideoCaptureDevice* video_capture_init(const char *device_path, int width, int h
             goto fail;
         }
     }
-    
+
+    // 将所有缓冲区放入队列 (VIDIOC_QBUF)，准备接收数据
     for (int i = 0; i < dev->buffer_count; i++) {
         struct v4l2_buffer buf;
         memset(&buf, 0, sizeof(buf));
@@ -91,6 +101,7 @@ VideoCaptureDevice* video_capture_init(const char *device_path, int width, int h
         }
     }
 
+    // 启动视频流
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(dev->fd, VIDIOC_STREAMON, &type) < 0) {
         perror("VIDIOC_STREAMON");
@@ -106,24 +117,15 @@ fail:
 }
 
 VideoFrame* video_capture_get_frame(VideoCaptureDevice *dev) {
-    printf("DEBUG: Waiting for frame (poll)...\n"); // <--- 新增
-    fflush(stdout); // <--- 新增，确保信息立刻打印出来
     struct pollfd fds[1];
     fds[0].fd = dev->fd;
-    fds[0].events = POLLIN;
+    fds[0].events = POLLIN;  
 
-    int ret = poll(fds, 1, 5000); // 5秒超时
+    int ret = poll(fds, 1, 5000);  
     if (ret <= 0) {
         perror("poll");
-        if (ret == 0) {
-            printf("DEBUG: poll timed out after 5 seconds.\n"); // <--- 新增
-        }
         return NULL;
     }
-
-    printf("DEBUG: poll returned, frame is ready. Dequeuing buffer...\n"); // <--- 新增
-    fflush(stdout);
-
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -133,33 +135,34 @@ VideoFrame* video_capture_get_frame(VideoCaptureDevice *dev) {
         perror("VIDIOC_DQBUF");
         return NULL;
     }
-
+    // 创建一个 VideoFrame 结构体来包装返回的数据
     VideoFrame *frame = malloc(sizeof(VideoFrame));
     if (!frame) {
         perror("malloc VideoFrame");
-        // 致命错误，无法恢复，但至少要把dequeued的buffer还回去
         ioctl(dev->fd, VIDIOC_QBUF, &buf);
         return NULL;
     }
-    
-    frame->start = dev->buffers[buf.index];
-    frame->length = buf.bytesused;
-    frame->index = buf.index;
 
+    // 填充 VideoFrame 结构体
+    frame->start = dev->buffers[buf.index];  
+    frame->length = buf.bytesused;           
+    frame->index = buf.index;                
     return frame;
 }
 
 int video_capture_release_frame(VideoCaptureDevice *dev, VideoFrame *frame) {
     if (!dev || !frame) return -1;
 
+    // 准备将缓冲区重新放回队列 (VIDIOC_QBUF)
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
     buf.index = frame->index;
 
-    free(frame); // 释放 VideoFrame 结构体本身
+    free(frame); 
 
+    // 将缓冲区重新入队，以便驱动可以再次向其中填充数据
     if (ioctl(dev->fd, VIDIOC_QBUF, &buf) < 0) {
         perror("VIDIOC_QBUF (requeue)");
         return -1;
@@ -169,12 +172,13 @@ int video_capture_release_frame(VideoCaptureDevice *dev, VideoFrame *frame) {
 
 void video_capture_cleanup(VideoCaptureDevice *dev) {
     if (!dev) return;
-
+    
+    // 停止视频流 (VIDIOC_STREAMOFF)
     if (dev->fd >= 0) {
         enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        ioctl(dev->fd, VIDIOC_STREAMOFF, &type); // 忽略错误
+        ioctl(dev->fd, VIDIOC_STREAMOFF, &type); 
     }
-
+    // 解除内存映射 (munmap)
     if (dev->buffers) {
         for (int i = 0; i < dev->buffer_count; i++) {
             if (dev->buffers[i] && dev->buffers[i] != MAP_FAILED) {
@@ -183,7 +187,8 @@ void video_capture_cleanup(VideoCaptureDevice *dev) {
         }
         free(dev->buffers);
     }
-    
+
+    // 释放缓冲区长度数组
     if (dev->buffer_lengths) {
         free(dev->buffer_lengths);
     }

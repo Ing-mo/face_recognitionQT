@@ -1,11 +1,13 @@
 #include "mainwindow.h"
+#include "videoprocessor.h" 
 #include <QApplication>
 
 int main(int argc, char *argv[])
 {
+    qRegisterMetaType<QList<RecognitionResult>>("QList<RecognitionResult>");
     QApplication a(argc, argv);
     MainWindow w;
-    w.show(); // 在嵌入式设备上通常是全屏显示 w.showFullScreen();
+    w.show();
     return a.exec();
 }
 
